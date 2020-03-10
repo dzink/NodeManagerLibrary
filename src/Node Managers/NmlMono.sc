@@ -1,0 +1,5 @@
+NmlMono : NmlSynthManager {
+	generateId {
+		^ \mono;
+	}
+}

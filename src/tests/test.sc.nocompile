@@ -1,0 +1,29 @@
+(
+var testClass = UnitTest;
+  {
+    var classOption = "--class".asSymbol;
+    var args = thisProcess.argv.collect {
+      arg p;
+      p.asSymbol;
+    };
+    if (args.includes(classOption)) {
+      testClass = args[args.indexOf(classOption) + 1].asClass();
+    };
+    try {
+      "Running subtests for % class...".format(testClass).postln;
+      Process.tailCallOptimize = false;
+      testClass.reportPasses_(false);
+      testClass.runAll();
+      "TEST COMPLETE".postln;
+      0.1.wait;
+      0.exit;
+    } {
+      arg error;
+      "Completed with errors".postln;
+      error.reportError;
+      error.class.postln;
+      0.1.wait;
+      0.exit;
+    };
+  }.fork;
+)

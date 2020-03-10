@@ -1,0 +1,21 @@
+{
+  "name": "NodeManagerLibrary",
+  "version": "0.0.1",
+  "dependencies": {},
+  "devDependencies": {
+    "nodemon": "^2.0.2"
+  },
+  "scripts": {
+    "test": "nodemon"
+  },
+  "author": "dzink",
+  "license": "ISC",
+  "nodemonConfig": {
+    "watch": ".",
+    "exec": "sclang  -D src/tests/test.sc.nocompile --class TestNml --derp meow",
+    "ext": "sc,nocompile",
+    "ignore": [
+      ".git/*"
+    ]
+  }
+}
