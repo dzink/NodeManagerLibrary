@@ -65,11 +65,6 @@ NmlSynthManager : NmlAbstract {
 		actionPostSet = List[];
 		actionOnFree = List[];
 
-		actionPreTrigger.add({
-			arg node, data;
-			this.addFreqToData(data);
-		});
-
 		^ this;
 	}
 
@@ -93,18 +88,18 @@ NmlSynthManager : NmlAbstract {
 		var def;
 
 		data = this.processData(data, processDataTrigger);
-		this.runActions(node, data, actionPreTrigger);
+		this.runActions(id, node, data, actionPreTrigger);
 
 		def = data.at(\synthDef) ?? { synthDef ?? { \default } };
 		node = Synth(def, data.asPairs);
 		nodes.put(id, node);
 		NodeWatcher.register(node);
 		node.onFree({
-			this.runActions(node, data, actionOnFree);
+			this.runActions(id, node, data, actionOnFree);
 			this.prKill(id, node);
 		});
 		this.addTriggerInfo(id, data, def);
-		this.runActions(node, data, actionPostTrigger);
+		this.runActions(id, node, data, actionPostTrigger);
 		^ node;
 	}
 
@@ -115,9 +110,10 @@ NmlSynthManager : NmlAbstract {
 			\beats -> t.beats,
 			\beatPos -> (t.beats % 1),
 			\barPos -> t.beatInBar,
-			\synthDef -> def,
+			\instrument -> def,
+			\triggerVel -> data[\vel] ? 0,
 		]).copyApply(data);
-		nodeInfo.put(id, data);
+		this.updateNodeInfo(id, data);
 		^ this;
 	}
 
@@ -133,12 +129,26 @@ NmlSynthManager : NmlAbstract {
 		arg id, node, data;
 		if (this.canActOnNode(node)) {
 			data = this.processData(data, processDataRetrigger);
-			this.runActions(node, data, actionPreRetrigger);
+			this.runActions(id, node, data, actionPreRetrigger);
 			this.prSet(node, data);
-			this.runActions(node, data, actionPostRetrigger);
+			this.addRetriggerInfo(id, data);
+			this.runActions(id, node, data, actionPostRetrigger);
 		};
 
 		^ node;
+	}
+
+	addRetriggerInfo {
+		arg id, data;
+		var t = TempoClock.default;
+		data = DzDmProcessDefaultValue(IdentityDictionary[
+			\beats -> t.beats,
+			\beatPos -> (t.beats % 1),
+			\barPos -> t.beatInBar,
+			\retriggerVel -> data[\vel] ? 0,
+		]).copyApply(data);
+		this.updateNodeInfo(id, data);
+		^ this;
 	}
 
 	release {
@@ -153,10 +163,10 @@ NmlSynthManager : NmlAbstract {
 		arg id, node, data;
 		if (this.canActOnNode(node)) {
 			data = this.processData(data, processDataRelease);
-			this.runActions(node, data, actionPreRelease);
+			this.runActions(id, node, data, actionPreRelease);
 			this.prSet(node, data);
 			this.addReleaseInfo(id, data);
-			this.runActions(node, data, actionPostRelease);
+			this.runActions(id, node, data, actionPostRelease);
 
 		};
 
@@ -170,9 +180,9 @@ NmlSynthManager : NmlAbstract {
 		data = DzDmProcessDefaultValue(IdentityDictionary[
 			\dur -> (t.beats - (oldData.at(\beats) ? 0)),
 			\release -> t.beats,
+			\releaseVel -> (data[\vel] ? 0),
 		]).copyApply(data);
-		data = DzDmProcessDefaultValue(oldData).apply(data);
-		nodeInfo.put(id, data);
+		this.updateNodeInfo(id, data);
 		^ this;
 	}
 
@@ -182,9 +192,9 @@ NmlSynthManager : NmlAbstract {
 		var node = nodes.at(id);
 		if (this.canActOnNode(node)) {
 			data = this.processData(data, processDataSet);
-			this.runActions(node, data, actionPreSet);
+			this.runActions(id, node, data, actionPreSet);
 			this.prSet(node, data);
-			this.runActions(node, data, actionPostSet);
+			this.runActions(id, node, data, actionPostSet);
 		};
 		^ node;
 	}
@@ -210,6 +220,18 @@ NmlSynthManager : NmlAbstract {
 		^ this;
 	}
 
+	setAll {
+		arg data;
+		data = this.processData(data, processDataSet);
+		nodes.keysValuesDo {
+			arg id, node;
+			this.runActions(id, node, data, actionPreSet);
+			this.prSet(node, data);
+			this.runActions(id, node, data, actionPostSet);
+		};
+		^ this;
+	}
+
 	processData {
 		arg data, processes;
 		data = data.copy;
@@ -220,11 +242,19 @@ NmlSynthManager : NmlAbstract {
 		^ data;
 	}
 
+	updateNodeInfo {
+		arg id, data;
+		var oldData = nodeInfo.at(id) ?? { IdentityDictionary[] };
+		oldData = DzDmProcessDefaultValue(oldData).copyApply(data);
+		nodeInfo.put(id, oldData);
+		^ oldData;
+	}
+
 	runActions {
-		arg node, data, actions;
+		arg id, node, data, actions;
 		actions.do {
 			arg action;
-			action.value(node, data);
+			action.value(id, node, data);
 		};
 		^ this;
 	}

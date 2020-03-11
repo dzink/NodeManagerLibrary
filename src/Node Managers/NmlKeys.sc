@@ -10,6 +10,10 @@ NmlKeys : NmlSynthManager {
 		arg a_synthDef, a_scale;
 		super.init(a_synthDef);
 		this.scale = a_scale ?? { Scale.major };
+		actionPreTrigger.add({
+			arg id, node, data;
+			this.addFreqToData(data);
+		});
 		^ this;
 	}
 
