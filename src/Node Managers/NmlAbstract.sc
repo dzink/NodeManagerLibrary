@@ -1,9 +1,14 @@
 NmlAbstract {
 	var < target;
+	var < semaphore;
 
 	*new {
 		arg target;
-		^ super.newCopyArgs(target);
+		^ super.newCopyArgs(target).init();
+	}
+
+	init {
+		semaphore = Semaphore(1);
 	}
 
 	target_ {
@@ -26,4 +31,15 @@ NmlAbstract {
 		arg data;
 		^ data.at(\id) ?? { data.hash };
 	}
+
+	sync {
+		if (thisThread.isKindOf(Routine)) {
+			if (target.isKindOf(Server)) {
+				target.sync();
+			} {
+				target.server.sync();
+			};
+		};
+	}
+
 }

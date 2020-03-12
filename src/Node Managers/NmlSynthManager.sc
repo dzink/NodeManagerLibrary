@@ -34,6 +34,7 @@ NmlSynthManager : NmlAbstract {
 	init {
 		arg a_synthDef;
 		this.synthDef = a_synthDef;
+		super.init();
 
 		nodes = IdentityDictionary[];
 		nodeInfo = IdentityDictionary[];
@@ -70,8 +71,10 @@ NmlSynthManager : NmlAbstract {
 
 	trigger {
 		arg data;
-		var id = this.generateId(data);
-		var node = nodes.at(id);
+		var id, node, result;
+
+		id = this.generateId(data);
+		node = nodes.at(id);
 
 		// Retrigger.
 		if (this.canActOnNode(node)) {
@@ -80,7 +83,8 @@ NmlSynthManager : NmlAbstract {
 			};
 		};
 
-		^ this.prTrigger(id, node, data);
+		result = this.prTrigger(id, node, data);
+		^ result;
 	}
 
 	prTrigger {
@@ -92,6 +96,7 @@ NmlSynthManager : NmlAbstract {
 
 		def = data.at(\synthDef) ?? { synthDef ?? { \default } };
 		node = Synth(def, data.asPairs);
+		\add.postln;
 		nodes.put(id, node);
 		NodeWatcher.register(node);
 		node.onFree({
@@ -119,10 +124,13 @@ NmlSynthManager : NmlAbstract {
 
 	retrigger {
 		arg data;
-		var id = this.generateId(data);
-		var node = nodes.at(id);
+		var id, node, result;
 
-		^ this.prRetrigger(id, node, data);
+		id = this.generateId(data);
+		node = nodes.at(id);
+
+		result = this.prRetrigger(id, node, data);
+		^ result;
 	}
 
 	prRetrigger {
@@ -153,10 +161,24 @@ NmlSynthManager : NmlAbstract {
 
 	release {
 		arg data;
-		var id = this.generateId(data);
-		var node = nodes.at(id);
+		var id, node, result, shouldDefer;
 
-		^ this.prRelease(id, node, data);
+		id = this.generateId(data);
+		node = nodes.at(id);
+		shouldDefer = this.canActOnNode.not;
+		result = this.prRelease(id, node, data);
+
+		// Sometimes the noteOff comes before noteOn. Solve this.
+		// if (shouldDefer) {
+		// 	if (thisThread.isKindOf(Routine)) {
+		// 		this.lock();
+		// 		0.07.wait;
+		// 		\deferred.postln;
+		// 		this.prRelease(id, node, data);
+		// 		this.unlock();
+		// 	};
+		// };
+		^ result;
 	}
 
 	prRelease {
@@ -167,9 +189,7 @@ NmlSynthManager : NmlAbstract {
 			this.prSet(node, data);
 			this.addReleaseInfo(id, data);
 			this.runActions(id, node, data, actionPostRelease);
-
 		};
-
 		^ node;
 	}
 
@@ -188,8 +208,9 @@ NmlSynthManager : NmlAbstract {
 
 	set {
 		arg data;
-		var id = this.generateId(data);
-		var node = nodes.at(id);
+		var id, node, result;
+		id = this.generateId(data);
+		node = nodes.at(id);
 		if (this.canActOnNode(node)) {
 			data = this.processData(data, processDataSet);
 			this.runActions(id, node, data, actionPreSet);
@@ -199,12 +220,20 @@ NmlSynthManager : NmlAbstract {
 		^ node;
 	}
 
+	prSet {
+		arg node, data;
+		node.set(*(data.asPairs));
+		^ this;
+	}
+
 	kill {
 		arg data;
-		var id = this.generateId(data);
-		var node = nodes.at(id);
+		var id, node, result;
+		id = this.generateId(data);
+		node = nodes.at(id);
 
-		^ this.prKill(id, node);
+		result = this.prKill(id, node);
+		^ result;
 	}
 
 	prKill {
@@ -212,12 +241,7 @@ NmlSynthManager : NmlAbstract {
 		node.free;
 		nodes.removeAt(id);
 		nodeInfo.removeAt(id);
-	}
-
-	prSet {
-		arg node, data;
-		node.set(*(data.asPairs));
-		^ this;
+		^ true;
 	}
 
 	setAll {
@@ -261,6 +285,7 @@ NmlSynthManager : NmlAbstract {
 
 	canActOnNode {
 		arg node;
+		this.sync();
 		^ node.notNil and: { node.isPlaying };
 	}
 

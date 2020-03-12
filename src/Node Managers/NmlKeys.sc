@@ -40,10 +40,12 @@ NmlKeys : NmlSynthManager {
 		arg noteNum = nil, channels = nil;
 		^ MIDIFunc.noteOn({
 			arg vel, note ... args;
-			this.trigger(Event[
-				\note -> note,
-				\vel -> vel,
-			]);
+			Routine {
+				this.trigger(Event[
+					\note -> note,
+					\vel -> vel,
+				]);
+			}.play;
 		}, noteNum, channels);
 	}
 
@@ -51,10 +53,13 @@ NmlKeys : NmlSynthManager {
 		arg noteNum = nil, channels = nil;
 		^ MIDIFunc.noteOff({
 			arg vel, note ... args;
-			this.release(Event[
-				\note -> note,
-				\vel -> vel,
-			]);
+			Routine {
+				0.01.wait;
+				this.release(Event[
+					\note -> note,
+					\vel -> vel,
+				]);
+			}.play;
 		}, noteNum, channels);
 	}
 
@@ -62,10 +67,12 @@ NmlKeys : NmlSynthManager {
 		arg noteNum = nil, channels = nil;
 		^ MIDIFunc.polytouch({
 			arg vel, note ... args;
-			this.set(Event[
-				\note -> note,
-				\vel -> vel,
-			]);
+			Routine {
+				this.set(Event[
+					\note -> note,
+					\vel -> vel,
+				]);
+			}.play;
 		}, noteNum, channels);
 	}
 
