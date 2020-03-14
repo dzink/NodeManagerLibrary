@@ -2,11 +2,16 @@ NmlSynthManager : NmlAbstract {
 	var < synthDef;
 	var < nodes;
 	var < nodeInfo;
+	var < group;
 
 	var < processDataTrigger;
 	var < processDataRetrigger;
 	var < processDataRelease;
 	var < processDataSet;
+
+	// var < triggerData;
+	// var < retriggerData;
+	// var < releaseData;
 
 	var < actionPreTrigger;
 	var < actionPreRetrigger;
@@ -17,6 +22,8 @@ NmlSynthManager : NmlAbstract {
 	var < actionPostRelease;
 	var < actionPostSet;
 	var < actionOnFree;
+
+	var <> poly = inf;
 
 	var overwriteMethod = \overwriteRetrigger;
 
@@ -35,6 +42,7 @@ NmlSynthManager : NmlAbstract {
 		arg a_synthDef;
 		this.synthDef = a_synthDef;
 		super.init();
+		group = Group(target);
 
 		nodes = IdentityDictionary[];
 		nodeInfo = IdentityDictionary[];
@@ -43,18 +51,9 @@ NmlSynthManager : NmlAbstract {
 		processDataRetrigger = List[];
 		processDataRelease = List[];
 		processDataSet = List[];
-		processDataTrigger.add(DzDmProcessDefaultValue(IdentityDictionary[
-			\t_sync -> 1,
-			\gate -> 1,
-		]));
-		processDataRetrigger.add(DzDmProcessDefaultValue(IdentityDictionary[
-			\t_sync -> 1,
-			\gate -> 1,
-		]));
-		processDataRelease.add(DzDmProcessDefaultValue(IdentityDictionary[
-			\t_sync -> 0,
-			\gate -> 0,
-		]));
+		processDataTrigger.add(DzDmProcessDefaultValue(this.triggerData));
+		processDataRetrigger.add(DzDmProcessDefaultValue(this.retriggerData));
+		processDataRelease.add(DzDmProcessDefaultValue(this.releaseData));
 
 		actionPreTrigger = List[];
 		actionPreRetrigger = List[];
@@ -95,7 +94,7 @@ NmlSynthManager : NmlAbstract {
 		this.runActions(id, node, data, actionPreTrigger);
 
 		def = data.at(\synthDef) ?? { synthDef ?? { \default } };
-		node = Synth(def, data.asPairs);
+		node = Synth(def, data.asPairs, group);
 		\add.postln;
 		nodes.put(id, node);
 		NodeWatcher.register(node);
@@ -305,6 +304,114 @@ NmlSynthManager : NmlAbstract {
 		arg id, node, data;
 		this.prRelease(id, node, data);
 		^ false;
+	}
+
+	makeSpaceForPoly {
+		arg id, data;
+
+		// selectors.do {
+		// 	arg selector;
+		// 	var matches = selector.apply(nodes);
+		// 	if (matches.size > poly) {
+		// 		// @TODO
+		// 	};
+		// }
+
+	}
+
+	auditNodes {
+		arg func ... args;
+		var s = target.server;
+		OSCFunc({
+			arg msg;
+			func.(msg, *args);
+		}, '/g_queryTree.reply', s.addr).oneShot;
+		s.sendMsg("/g_queryTree", group.nodeID);
+		^ this;
+	}
+
+	prGetNodesFromTreeResponse {
+		arg func, class ... args;
+		var auditFunc = {
+			arg msg, class = Node;
+			var nodeList = List[];
+			var s = target.server;
+			msg = msg.reverse;
+			msg.pop;
+			msg.pop;
+			while({msg.size > 0}) {
+				var nodeId = msg.pop;
+				var type = msg.pop;
+				if (type == -1) {
+					var synthDef = msg.pop;
+					nodeList.add(Synth.basicNew(synthDef, s, nodeId));
+				} {
+					nodeList.add(Group.basicNew(s, nodeId));
+				};
+			};
+			nodeList = nodeList.select {
+				arg node;
+				node.isKindOf(class);
+			};
+			func.(nodeList, *args);
+		};
+		^ this.auditNodes(auditFunc, class);
+	}
+
+	prGetSynthsFromTreeResponse {
+		arg func ... args;
+		[\func, func].postln;
+		^ this.prGetNodesFromTreeResponse(func, Synth, *args);
+	}
+
+	releaseOrphanedNodes {
+		this.prGetSynthsFromTreeResponse({
+			arg a_nodes;
+			[\audit, a_nodes].postln;
+			a_nodes.do {
+				arg node;
+				if (nodes.includes(node).not) {
+					[\release, node, this.releaseData.asPairs].postln;
+					node.set(*(this.releaseData.asPairs));
+				};
+			};
+		});
+		^ this;
+	}
+
+	triggerData {
+		^ IdentityDictionary[
+			\t_sync -> 1,
+			\gate -> 1,
+		];
+	}
+
+	retriggerData {
+		^ IdentityDictionary[
+			\t_sync -> 1,
+			\gate -> 1,
+		];
+	}
+
+	releaseData {
+		^ IdentityDictionary[
+			\t_sync -> 0,
+			\gate -> 0,
+		];
+	}
+
+	/**
+	 * Every second, scan for nodes in the group that are not in the dictionary.
+	 * Ideally, this won't be needed, but there are certain unresolvable race
+	 * conditions that make it useful to periodically scan.
+	 */
+	runNodeAuditRelease {
+		^ Routine {
+			inf.do {
+				this.releaseOrphanedNodes();
+				1.wait;
+			};
+		}.play;
 	}
 
 }

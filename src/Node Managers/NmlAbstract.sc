@@ -13,13 +13,13 @@ NmlAbstract {
 
 	target_ {
 		arg a_target;
-		a_target = a_target ?? { Server.default };
-		[Node, Server].do {
-			arg class;
-			if (a_target.isKindOf(class)) {
-				target = a_target;
-				^ this;
-			};
+		a_target = a_target ?? { Server.default.defaultGroup };
+		if (a_target.isKindOf(Server)) {
+			a_target = a_target.defaultGroup;
+		};
+		if (a_target.isKindOf(Group)) {
+			target = a_target;
+			^ this;
 		};
 		Exception("Tried to add a bad target to a DzNmAbstract").throw();
 	}

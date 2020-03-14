@@ -10,7 +10,7 @@ TestNmlAbstract : TestNml {
 	}
 
 	test_target {
-		this.assert(n.target_(Server.default).target.isKindOf(Server), "Servers can be added as target");
+		this.assert(n.target_(Server.default.asTarget).target.isKindOf(Server), "Servers can be added as target");
 		this.assert(n.target_(Group()).target.isKindOf(Node), "Nodes can be added as target");
 	}
 
