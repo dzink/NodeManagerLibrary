@@ -76,6 +76,14 @@ NmlKeys : NmlSynthManager {
 		}, noteNum, channels);
 	}
 
+	midiConnectHold {
+		arg cc = nil, channels = nil;
+		^ MIDIFunc.cc({
+			arg ... args;
+			args.postln;
+		});
+	}
+
 	addFreqToData {
 		arg data;
 		data[\freq] = data[\freq] ?? { Scale.major.degreeToFreq(data.at(\note), 440, -7) };

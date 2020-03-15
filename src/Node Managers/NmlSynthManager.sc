@@ -17,13 +17,19 @@ NmlSynthManager : NmlAbstract {
 	var < actionPreRetrigger;
 	var < actionPreRelease;
 	var < actionPreSet;
+	var < actionPreRun;
 	var < actionPostTrigger;
 	var < actionPostRetrigger;
 	var < actionPostRelease;
 	var < actionPostSet;
+	var < actionPostRun;
 	var < actionOnFree;
 
 	var <> poly = inf;
+	var < hold = false;
+
+	var in = 0;
+	var out = 0;
 
 	var overwriteMethod = \overwriteRetrigger;
 
@@ -44,7 +50,7 @@ NmlSynthManager : NmlAbstract {
 		super.init();
 		group = Group(target);
 
-		nodes = IdentityDictionary[];
+		nodes = DzDmIndex[];
 		nodeInfo = IdentityDictionary[];
 
 		processDataTrigger = List[];
@@ -71,7 +77,6 @@ NmlSynthManager : NmlAbstract {
 	trigger {
 		arg data;
 		var id, node, result;
-
 		id = this.generateId(data);
 		node = nodes.at(id);
 
@@ -95,8 +100,7 @@ NmlSynthManager : NmlAbstract {
 
 		def = data.at(\synthDef) ?? { synthDef ?? { \default } };
 		node = Synth(def, data.asPairs, group);
-		\add.postln;
-		nodes.put(id, node);
+		nodes.put(id, node, data[\weight] ? 0);
 		NodeWatcher.register(node);
 		node.onFree({
 			this.runActions(id, node, data, actionOnFree);
@@ -124,6 +128,9 @@ NmlSynthManager : NmlAbstract {
 	retrigger {
 		arg data;
 		var id, node, result;
+		if (hold) {
+			^ nil
+		};
 
 		id = this.generateId(data);
 		node = nodes.at(id);
@@ -161,22 +168,13 @@ NmlSynthManager : NmlAbstract {
 	release {
 		arg data;
 		var id, node, result, shouldDefer;
-
+		if (hold) {
+			^ nil
+		};
 		id = this.generateId(data);
 		node = nodes.at(id);
 		shouldDefer = this.canActOnNode.not;
 		result = this.prRelease(id, node, data);
-
-		// Sometimes the noteOff comes before noteOn. Solve this.
-		// if (shouldDefer) {
-		// 	if (thisThread.isKindOf(Routine)) {
-		// 		this.lock();
-		// 		0.07.wait;
-		// 		\deferred.postln;
-		// 		this.prRelease(id, node, data);
-		// 		this.unlock();
-		// 	};
-		// };
 		^ result;
 	}
 
@@ -208,6 +206,9 @@ NmlSynthManager : NmlAbstract {
 	set {
 		arg data;
 		var id, node, result;
+		if (hold) {
+			^ nil
+		};
 		id = this.generateId(data);
 		node = nodes.at(id);
 		if (this.canActOnNode(node)) {
@@ -225,12 +226,29 @@ NmlSynthManager : NmlAbstract {
 		^ this;
 	}
 
+	run {
+		arg id, run = true;
+		var node;
+		node = nodes.at(id);
+		if (this.canActOnNode(node)) {
+			var data = Event[\run -> run];
+			this.runActions(id, node, data, actionPreRun);
+			node.run(data[\run]);
+			this.runActions(id, node, data, actionPostRun);
+		};
+		^ node;
+	}
+
+	pause {
+		arg id;
+		^ this.run(id, false);
+	}
+
 	kill {
 		arg data;
 		var id, node, result;
 		id = this.generateId(data);
 		node = nodes.at(id);
-
 		result = this.prKill(id, node);
 		^ result;
 	}
@@ -319,6 +337,9 @@ NmlSynthManager : NmlAbstract {
 
 	}
 
+	/**
+	 * Run an audit of actual nodes on the server.
+	 */
 	auditNodes {
 		arg func ... args;
 		var s = target.server;
@@ -330,8 +351,11 @@ NmlSynthManager : NmlAbstract {
 		^ this;
 	}
 
+	/**
+	 * Perform a function on all nodes on the server.
+	 */
 	prGetNodesFromTreeResponse {
-		arg func, class ... args;
+		arg func, class = Node ... args;
 		var auditFunc = {
 			arg msg, class = Node;
 			var nodeList = List[];
@@ -360,18 +384,21 @@ NmlSynthManager : NmlAbstract {
 
 	prGetSynthsFromTreeResponse {
 		arg func ... args;
-		[\func, func].postln;
 		^ this.prGetNodesFromTreeResponse(func, Synth, *args);
 	}
 
+	/**
+	 * Occasionally, a node will get lost from the dictionary. This is usually
+	 * due to race conditions. This method will scan the server and release as
+	 * needed.
+	 */
 	releaseOrphanedNodes {
 		this.prGetSynthsFromTreeResponse({
 			arg a_nodes;
-			[\audit, a_nodes].postln;
 			a_nodes.do {
 				arg node;
-				if (nodes.includes(node).not) {
-					[\release, node, this.releaseData.asPairs].postln;
+				[\node, node, nodes.values].postln;
+				if (nodes.values.includes(node).not) {
 					node.set(*(this.releaseData.asPairs));
 				};
 			};
@@ -379,10 +406,19 @@ NmlSynthManager : NmlAbstract {
 		^ this;
 	}
 
+	setInOut {
+		arg a_in, a_out;
+		in = a_in;
+		out = a_out;
+		^ this;
+	}
+
 	triggerData {
 		^ IdentityDictionary[
 			\t_sync -> 1,
 			\gate -> 1,
+			\in -> in,
+			\out -> out,
 		];
 	}
 
@@ -390,6 +426,8 @@ NmlSynthManager : NmlAbstract {
 		^ IdentityDictionary[
 			\t_sync -> 1,
 			\gate -> 1,
+			\in -> in,
+			\out -> out,
 		];
 	}
 
@@ -397,21 +435,27 @@ NmlSynthManager : NmlAbstract {
 		^ IdentityDictionary[
 			\t_sync -> 0,
 			\gate -> 0,
+			\in -> in,
+			\out -> out,
 		];
 	}
 
 	/**
-	 * Every second, scan for nodes in the group that are not in the dictionary.
-	 * Ideally, this won't be needed, but there are certain unresolvable race
-	 * conditions that make it useful to periodically scan.
+	 * see @releaseOrphanedNodes
+	 * Runs an audit and releases nodes every second.
 	 */
 	runNodeAuditRelease {
+		arg interval = 1;
 		^ Routine {
 			inf.do {
 				this.releaseOrphanedNodes();
-				1.wait;
+				interval.wait;
 			};
 		}.play;
+	}
+
+	asTarget {
+		^ group;
 	}
 
 }
